@@ -1,4 +1,5 @@
 use dojolib::*;
+use dojolib::connection::*;
 use std::io::Write;
 
 fn readline() -> String {
@@ -9,7 +10,7 @@ fn readline() -> String {
 
 fn connect(port: &str) {
     println!("Connecting to port {} @115200 baud", port);
-    let mut connection = CircuitDojoConnection::new(port, 115200).unwrap();
+    let mut connection = Connection::new(port, 115200).unwrap();
     connection.begin().unwrap();
     let capabilities = connection.request_capabilities().unwrap();
     println!("== Connected to {} ==", capabilities.name);
