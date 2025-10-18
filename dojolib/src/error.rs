@@ -4,11 +4,16 @@ pub enum CircuitDojoError {
     SynchronizationError(String), // unexpected unprocessable bytes were received
     IoError(std::io::Error),
     SerialportError(serialport::Error),
+    TimedOut, // io timeout
 }
 
 impl From<std::io::Error> for CircuitDojoError {
     fn from(error: std::io::Error) -> CircuitDojoError {
-        CircuitDojoError::IoError(error)
+        if let std::io::ErrorKind::TimedOut = error.kind() {
+            CircuitDojoError::TimedOut
+        } else {
+            CircuitDojoError::IoError(error)
+        }
     }
 }
 

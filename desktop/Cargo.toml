@@ -1,0 +1,8 @@
+[package]
+name = "desktop"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+eframe = "0.32.3"
+dojolib = { path = "../dojolib" }

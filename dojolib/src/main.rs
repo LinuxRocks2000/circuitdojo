@@ -1,5 +1,5 @@
-use dojolib::*;
 use dojolib::connection::*;
+use dojolib::*;
 use std::io::Write;
 
 fn readline() -> String {

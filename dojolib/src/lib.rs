@@ -6,12 +6,13 @@
 */
 pub const DOJOLIB_VERSION: u8 = 1;
 
-mod opcodes;
 pub mod connection;
+mod opcodes;
 pub use connection::Connection; // allow raw connections
 pub mod error;
-pub use error::{ CircuitDojoError, Result };
-
+pub use error::{CircuitDojoError, Result};
+pub mod board;
+pub use board::Board;
 
 pub fn ports() -> Result<Vec<String>> {
     Ok(serialport::available_ports()?
