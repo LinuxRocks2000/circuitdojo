@@ -13,12 +13,44 @@ pindef pins[] = {
   { A2, true, false, "Analog 2" }
 };
 
-char modes[] = { 0, 0, 0 };
+#define DIG_NONE 1024
+#define DIG_LOW 1025
+#define DIG_HIGH 1026
 
-int pinCount = sizeof(pins) / sizeof(pindef);
+uint16_t states[] = { // 0-1023 = analog, 1024=none, 1025=digital low, 1026=digital high
+  DIG_NONE,
+  DIG_NONE,
+  DIG_NONE
+};
+
+char modes[] = { 0, 0, 0 }; // 0=none, 1=input, 2=output
+
+const int pinCount = sizeof(pins) / sizeof(pindef);
 
 void setup() {
   Serial.begin(115200);
+}
+
+uint16_t subsc_wavelength = 0;
+long last_update = 0;
+
+void doPinUpdates() {
+  for (int i = 0; i < pinCount; i ++) {
+    if (modes[i] != 1) {
+      continue;
+    }
+    if (pins[i].is_analog) {
+  
+    }
+    else {
+      int val = digitalRead(pins[i].physical_pin);
+      int state = val ? DIG_HIGH : DIG_LOW;
+      if (states[i] != state) {
+        states[i] = state;
+        Serial.write(i | (val ? 0x40 : 0));
+      }
+    }
+  }
 }
 
 void loop() {
@@ -33,7 +65,14 @@ void loop() {
 
   while (true) {
     // past this point the handshake is complete! let's do some normal operation tasks:
-    while (Serial.available() == 0) {} // block until byte
+    while (Serial.available() == 0) {
+      if (subsc_wavelength != 0) {
+        if (millis() - last_update > subsc_wavelength) {
+          last_update = millis();
+          doPinUpdates();
+        }
+      }
+    }
     byte = Serial.read();
     if ((~byte) & 0x80) { // if the high bit is unset
       int pindex = byte & 0b00111111;
@@ -81,8 +120,13 @@ void loop() {
         modes[pindex] = 2;
       }
     }
-    else if (byte == 0x86) {
+    else if (byte == 0x84) { // subscribe to updates
+      while (Serial.available() < 2) {} // block until bytes
+      subsc_wavelength = Serial.read();
+      subsc_wavelength |= Serial.read() << 8;
       Serial.write(0xFF);
+    }
+    else if (byte == 0x86) { // write all pin values, then ACK
       for (int i = 0; i < pinCount; i ++) {
         if (modes[i] == 1) {
           if (pins[i].is_analog) {
@@ -93,6 +137,7 @@ void loop() {
           }
         }
       }
+      Serial.write(0xFF);
     }
     else {
       Serial.write(0xFE); // send an error code and get out of here skoob

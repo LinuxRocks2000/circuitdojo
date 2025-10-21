@@ -1,7 +1,17 @@
 // a nice abstraction for dealing with circuitdojo boards
 
-use crate::connection::*;
+use std::collections::HashMap;
+use std::io::{Read, Write};
+use std::slice::Iter;
+
 use crate::error::Result;
+use crate::{CircuitDojoError, connection::*};
+
+use ringbuf::traits::Split;
+use ringbuf::{CachingCons, CachingProd};
+use ringbuf::{HeapRb, SharedRb};
+use ringbuf::{consumer::Consumer, producer::Producer};
+use std::sync::Arc;
 
 pub enum PinType {
     DigitalPullup,
@@ -15,18 +25,38 @@ pub enum PinMode {
     Output,
 }
 
+#[derive(Debug)]
+pub enum PinStatus {
+    NoStatus, // the pin is not configured for input or output
+    DigitalOutputting(bool),
+    DigitalInputting(bool),
+    DigitalPullupInputting(bool),
+    AnalogOutputting(u16),
+    AnalogInputting(u16),
+}
+
 pub struct PinData {
     pub tp: PinType,
     pub mode: PinMode,
     pub hw_id: u8,
     pub ident: String,
+    pub status: PinStatus, // not guaranteed to synchronize with
+                           // PinMode or PinType
 }
 
 pub struct Board {
-    connection: Connection,
     pins: Vec<PinData>,
     board_name: String,
     min_sample: u16,
+    mapped_pins_hwids: HashMap<u8, usize>,
+    commands: CachingProd<Arc<HeapRb<Command>>>, // commands we're spraying to the connection
+    // inside a worker thread
+    events: CachingCons<Arc<HeapRb<BoardEvent>>>,
+}
+
+#[derive(Debug)]
+enum BoardEvent {
+    PinState(u8, PinStatus),
 }
 
 impl Board {
@@ -37,7 +67,7 @@ impl Board {
         let mut board_name = None;
         let mut min_sample = None;
         let mut pins = vec![];
-        while board_name.is_none() && min_sample.is_none() {
+        while board_name.is_none() || min_sample.is_none() {
             conn.wait_incoming()?;
             for event in conn.events() {
                 match event {
@@ -59,17 +89,140 @@ impl Board {
                             mode: PinMode::Unset,
                             hw_id: pin_id,
                             ident: pin_name,
+                            status: PinStatus::NoStatus,
                         })
                     }
                     _ => {} // ignore all other events during setup mode
                 }
             }
         }
+        let mut mapped_pins_hwids = HashMap::new();
+        for (i, pin) in pins.iter().enumerate() {
+            mapped_pins_hwids.insert(pin.hw_id, i);
+        }
+        let (command_tx, command_rx) = HeapRb::new(32).split();
+        let (event_tx, event_rx) = HeapRb::new(32).split();
+        std::thread::spawn(Self::worker(command_rx, event_tx, conn));
         Ok(Self {
-            connection: conn,
             min_sample: min_sample.unwrap(),
             board_name: board_name.unwrap(),
+            mapped_pins_hwids,
             pins,
+            commands: command_tx,
+            events: event_rx,
         })
+    }
+
+    fn worker(
+        mut commands: impl Consumer<Item = Command> + Send + 'static,
+        mut events: impl Producer<Item = BoardEvent> + Send + 'static,
+        mut connection: Connection,
+    ) -> Box<dyn FnOnce() -> () + Send> {
+        Box::new(move || {
+            loop {
+                let err = connection.wait_incoming();
+                match err {
+                    Ok(_) => {}
+                    Err(CircuitDojoError::TimedOut) => {}
+                    _ => {
+                        err.unwrap();
+                    }
+                }
+                for event in connection.events() {
+                    match event {
+                        Event::BoardError(command) => {
+                            println!("failed to {:?}, synchronization issues may occur", command);
+                        }
+                        Event::DigitalPinStateChange(pin, state) => {
+                            events
+                                .try_push(BoardEvent::PinState(
+                                    pin,
+                                    PinStatus::DigitalInputting(state),
+                                ))
+                                .unwrap();
+                        }
+                        _ => {}
+                    }
+                }
+                for command in commands.pop_iter() {
+                    println!("running {:?}", command);
+                    let _ = connection.write_command(command);
+                }
+            }
+        })
+    }
+
+    pub fn get_name(&self) -> &str {
+        &self.board_name
+    }
+
+    pub fn pins(&self) -> Iter<PinData> {
+        self.pins.iter()
+    }
+
+    pub fn update(&mut self) -> Result<()> {
+        // read incoming events and make changes
+        for event in self.events.pop_iter() {
+            match event {
+                BoardEvent::PinState(pin, state) => {
+                    let pindex = self
+                        .mapped_pins_hwids
+                        .get(&pin)
+                        .ok_or(CircuitDojoError::InvalidPin(pin))?;
+                    self.pins.get_mut(*pindex).unwrap().status = state;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub fn set_output(&mut self, pin_num: u8) -> Result<()> {
+        let pindex = self
+            .mapped_pins_hwids
+            .get(&pin_num)
+            .ok_or(CircuitDojoError::InvalidPin(pin_num))?;
+        let pin = self.pins.get_mut(*pindex).unwrap(); // unwrap is fine here: the index must be valid to have been returned from the mapping
+        pin.mode = PinMode::Output;
+        self.commands
+            .try_push(Command::SetPinModeOutput(pin_num))
+            .unwrap();
+        Ok(())
+    }
+
+    pub fn set_input(&mut self, pin_num: u8) -> Result<()> {
+        let pindex = self
+            .mapped_pins_hwids
+            .get(&pin_num)
+            .ok_or(CircuitDojoError::InvalidPin(pin_num))?;
+        let pin = self.pins.get_mut(*pindex).unwrap(); // unwrap is fine here: the index must be valid to have been returned from the mapping
+        pin.mode = PinMode::Output;
+        self.commands
+            .try_push(Command::SetPinModeInput(pin_num))
+            .unwrap();
+        Ok(())
+    }
+
+    pub fn digital_write(&mut self, pin_num: u8, value: bool) -> Result<()> {
+        let pindex = self
+            .mapped_pins_hwids
+            .get(&pin_num)
+            .ok_or(CircuitDojoError::InvalidPin(pin_num))?;
+        let pin = self.pins.get_mut(*pindex).unwrap(); // unwrap is fine here: the index must be valid to have been returned from the mapping
+        pin.status = PinStatus::DigitalOutputting(value);
+        if let PinMode::Output = pin.mode {
+            self.commands
+                .try_push(Command::SetDigitalPinValue(pin_num, value))
+                .unwrap();
+        } else {
+            return Err(CircuitDojoError::InvalidPin(pin_num));
+        }
+        Ok(())
+    }
+
+    pub fn subscribe(&mut self, wavelength: u16) -> Result<()> {
+        self.commands
+            .try_push(Command::Subscribe(wavelength))
+            .unwrap();
+        Ok(())
     }
 }

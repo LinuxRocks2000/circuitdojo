@@ -17,11 +17,13 @@
 
 use crate::CircuitDojoError;
 use crate::Result;
+use crate::board::PinStatus;
 use crate::opcodes::{miso, mosi};
 use std::borrow::Cow;
 use std::collections::VecDeque;
 use std::collections::vec_deque::Drain;
 
+#[derive(Debug)]
 pub enum Command {
     // an outgoing command.
     PleaseEstablish,
@@ -30,8 +32,10 @@ pub enum Command {
     SetPinModeOutput(u8),
     RunOneSample,
     SetDigitalPinValue(u8, bool),
+    Subscribe(u16),
 }
 
+#[derive(Debug)]
 pub enum Event {
     // an event from the board.
     BoardError(Command), // the board returned Error for some command; we probably want to log it, and possibly warn the user!
@@ -55,7 +59,7 @@ impl Connection {
         Ok(Self {
             port: serialport::new(port, baud)
                 .dtr_on_open(false)
-                .timeout(std::time::Duration::from_secs(1)) // after 1 seconds of not receiving data when data is expected, fail!
+                .timeout(std::time::Duration::from_secs(1)) // after 1s of not receiving data when data is expected, fail!
                 .open()?,
             waiting_commands: VecDeque::new(),
             events: VecDeque::new(),
@@ -101,12 +105,16 @@ impl Connection {
                 self.write_byte(pin | if value { 0x40 } else { 0x00 })?;
             }
             Command::SetPinModeInput(pin) => {
-                self.write_byte(mosi::SET_PIN_MODE_INPUT);
-                self.write_byte(pin);
+                self.write_byte(mosi::SET_PIN_MODE_INPUT)?;
+                self.write_byte(pin)?;
             }
             Command::SetPinModeOutput(pin) => {
-                self.write_byte(mosi::SET_PIN_MODE_OUTPUT);
-                self.write_byte(pin);
+                self.write_byte(mosi::SET_PIN_MODE_OUTPUT)?;
+                self.write_byte(pin)?;
+            }
+            Command::Subscribe(wavelength) => {
+                self.write_byte(mosi::SUBSCRIBE)?;
+                self.port.write(&wavelength.to_le_bytes())?;
             }
         }
         self.waiting_commands.push_back(command);
@@ -115,12 +123,18 @@ impl Connection {
 
     pub fn wait_incoming(&mut self) -> Result<()> {
         let byte = self.block_read_byte()?;
+        if byte < 128 {
+            // this is a digital pin value set
+            self.events
+                .push_back(Event::DigitalPinStateChange(byte & 0x3F, byte & 0x40 > 0));
+            return Ok(());
+        }
         match byte {
             miso::ERROR => {
                 // a board error does not necessarily terminate;
                 // we need to log this to the queue and proceed.
                 if let Some(command) = self.waiting_commands.pop_front() {
-                    self.events.push_front(Event::BoardError(command));
+                    self.events.push_back(Event::BoardError(command));
                 } else {
                     return Err(CircuitDojoError::SynchronizationError(format!(
                         "Unexpected ERROR: There is no command in queue. Possible board malfunction."
@@ -129,7 +143,17 @@ impl Connection {
             }
             miso::ACK => {
                 // this is uninteresting. just discard.
-                self.waiting_commands.pop_front();
+                if let Some(Command::PleaseEstablish) = self.waiting_commands.pop_front() {
+                    self.waiting_commands.retain(|m| {
+                        // if the board ACKs a PleaseEstablish, there's probably another PleaseEstablish
+                        // in the buffer that never got acked (because it was sent before the board booted)
+                        if let Command::PleaseEstablish = m {
+                            false
+                        } else {
+                            true
+                        }
+                    })
+                }
             }
             miso::SAMPLING_BOUNDS => {
                 let mut buf = [0; 2];
@@ -191,8 +215,10 @@ impl Connection {
     pub fn begin(&mut self) -> Result<()> {
         let mut retry_limit = 5;
         while retry_limit > 0 {
-            self.write_command(Command::PleaseEstablish);
+            self.write_command(Command::PleaseEstablish)?;
             if let Ok(()) = self.wait_incoming() {
+                self.port
+                    .set_timeout(std::time::Duration::from_millis(10))?;
                 return Ok(());
             }
             retry_limit -= 1;

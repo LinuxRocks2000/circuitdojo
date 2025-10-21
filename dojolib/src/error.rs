@@ -5,6 +5,8 @@ pub enum CircuitDojoError {
     IoError(std::io::Error),
     SerialportError(serialport::Error),
     TimedOut, // io timeout
+    InvalidPin(u8), // tried to access a pin that does not exist
+              // or cannot be accessed
 }
 
 impl From<std::io::Error> for CircuitDojoError {

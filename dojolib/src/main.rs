@@ -1,4 +1,4 @@
-use dojolib::connection::*;
+use dojolib::board::*;
 use dojolib::*;
 use std::io::Write;
 
@@ -10,61 +10,56 @@ fn readline() -> String {
 
 fn connect(port: &str) {
     println!("Connecting to port {} @115200 baud", port);
-    let mut connection = Connection::new(port, 115200).unwrap();
-    connection.begin().unwrap();
-    let capabilities = connection.request_capabilities().unwrap();
-    println!("== Connected to {} ==", capabilities.name);
-    println!("Available pins:");
-    for pin in capabilities.pins.iter() {
-        println!(
-            "* [pin {}] {}: {}",
-            pin.id,
-            match pin.pin_type {
-                PinType::Analog => "ANALOG",
-                PinType::Digital => "DIGITAL NO PULLUP",
-                PinType::DigitalPullup => "DIGITAL PULLUP AVAILABLE",
-            },
-            pin.identifier
-        );
-    }
-    let mut modes = vec![0; capabilities.pins.len()];
+    let mut board = Board::new(port, 115200).unwrap();
+    board.subscribe(100).unwrap();
+    println!("Connected to {}", board.get_name());
     loop {
         let line = readline();
-        let mut args = line.split(' ');
-        let command = if let Some(arg) = args.next() {
-            arg
-        } else {
-            continue;
-        };
-        match command {
+        board.update().unwrap();
+        let mut args = line.split(" ");
+        match args.next().unwrap().as_ref() {
+            "pins" => {
+                for pin in board.pins() {
+                    println!(
+                        "* [{}] {} {}: {}",
+                        pin.hw_id,
+                        match pin.tp {
+                            PinType::DigitalPullup => "DP WP",
+                            PinType::Digital => "DP",
+                            PinType::Analog => "AP",
+                        },
+                        pin.ident,
+                        match pin.status {
+                            PinStatus::DigitalInputting(level) => {
+                                format!("Inputting {}", if level { "HIGH" } else { "LOW" })
+                            }
+                            PinStatus::DigitalOutputting(level) => {
+                                format!("Outputting {}", if level { "HIGH" } else { "LOW" })
+                            }
+                            _ => String::new(),
+                        }
+                    );
+                }
+            }
             "setoutput" => {
-                let pin: u8 = args.next().unwrap().parse().unwrap();
-                connection.set_output(pin).unwrap();
-                modes[pin as usize] = 2;
+                let pin_num = args.next().unwrap().parse::<u8>().unwrap();
+                board.set_output(pin_num).unwrap();
             }
             "setinput" => {
-                let pin: u8 = args.next().unwrap().parse().unwrap();
-                connection.set_input(pin).unwrap();
-                modes[pin as usize] = 1;
+                let pin_num = args.next().unwrap().parse::<u8>().unwrap();
+                board.set_input(pin_num).unwrap();
             }
-            "write" => {
-                let pin: u8 = args.next().unwrap().parse().unwrap();
-                let value = args.next().unwrap() == "HIGH";
-                connection.digital_write(pin, value).unwrap();
-            }
-            "sample" => {
-                let mut inputs_count = 0;
-                for mode in modes.iter() {
-                    if *mode == 1 {
-                        inputs_count += 1;
-                    }
-                }
-                for (i, state) in connection.sample(inputs_count).unwrap().into_iter() {
-                    println!("* [pin {}] is {}", i, if state { "HIGH" } else { "LOW" });
-                }
+            "digitalwrite" => {
+                let pin_num = args.next().unwrap().parse::<u8>().unwrap();
+                let value = match args.next().unwrap() {
+                    "HIGH" => true,
+                    "LOW" => false,
+                    _ => panic!(),
+                };
+                board.digital_write(pin_num, value).unwrap();
             }
             _ => {
-                println!("invalid command");
+                println!("bad command");
             }
         }
     }
