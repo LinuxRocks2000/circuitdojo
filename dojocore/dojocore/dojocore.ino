@@ -1,3 +1,15 @@
+/*
+Copyright 2025 Tyler Clarke
+
+Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS “AS IS” AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+*/
 // the core of CircuitDojo
 
 struct pindef {
@@ -10,7 +22,15 @@ struct pindef {
 pindef pins[] = {
   { 3, false, true, "Digital 3" },
   { 4, false, true, "Digital 4" },
-  { A2, true, false, "Analog 2" }
+  { 5, false, true, "Digital 5" },
+  { 6, false, true, "Digital 6" },
+  { 7, false, true, "Digital 7" },
+  { 8, false, true, "Digital 8" },
+  { 9, false, true, "Digital 9" },
+  { 10, false, true, "Digital 10" },
+  { 11, false, true, "Digital 11" },
+  { 12, false, true, "Digital 12" },
+  { 13, false, true, "Digital 13" },
 };
 
 #define DIG_NONE 1024
@@ -20,10 +40,30 @@ pindef pins[] = {
 uint16_t states[] = { // 0-1023 = analog, 1024=none, 1025=digital low, 1026=digital high
   DIG_NONE,
   DIG_NONE,
-  DIG_NONE
+  DIG_NONE,
+  DIG_NONE,
+  DIG_NONE,
+  DIG_NONE,
+  DIG_NONE,
+  DIG_NONE,
+  DIG_NONE,
+  DIG_NONE,
+  DIG_NONE,
 };
 
-char modes[] = { 0, 0, 0 }; // 0=none, 1=input, 2=output
+char modes[] = {
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+}; // 0=none, 1=input, 2=output
 
 const int pinCount = sizeof(pins) / sizeof(pindef);
 
