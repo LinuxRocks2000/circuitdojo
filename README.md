@@ -60,6 +60,14 @@ It will prompt you for a serial port: select the one with your Arduino UNO attac
 (it's establishing a serial connection), and then switch over to a screen with all of your board's digital pins visible! Click the boxes saying "output", "input", or "unset" to
 toggle between them, and for outputs, click anywhere else in the block to toggle HIGH/LOW.
 
+## Where Can I Use This?
+
+You can use it anywhere *personally*, of course. At Georgia Tech, there is no class which accepts this as an alternative to the MyDaq; the main use case
+is prototyping your circuits before lab day.
+
+If you're a professor at Gatech teaching ECE2020 (or another course that uses the MyDaq), and you want to provide a ridiculously cheap and open-source alternative to
+your students, please consider accepting CircuitDojo! If you're already doing this, it would be pretty cool if you were to shoot me an email so I can set up a support table.
+
 ## Bugs
 Bugs happen. They should be submitted in this repository; anyone at Gatech can also send me an email to my student account.
 If the software crashes, it will print out some diagnostic information: if you can capture this, please include the text in your bug report.
@@ -74,6 +82,7 @@ Some low-hanging fruit:
 * Add "board layout files" that set the pin modes and their labels and locks changes
 * Clean up dojolib's hacky I/O thread
 * Fix the connection-setup freeze
+* Test (and make changes to support) other boards (especially the Mega)
 
 ## BSD License
 Copyright 2025 Tyler Clarke
