@@ -13,19 +13,21 @@ use ringbuf::{HeapRb, SharedRb};
 use ringbuf::{consumer::Consumer, producer::Producer};
 use std::sync::Arc;
 
+#[derive(Copy, Clone)]
 pub enum PinType {
     DigitalPullup,
     Digital,
     Analog,
 }
 
+#[derive(Copy, Clone)]
 pub enum PinMode {
     Unset,
     Input,
     Output,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum PinStatus {
     NoStatus, // the pin is not configured for input or output
     DigitalOutputting(bool),
@@ -195,7 +197,7 @@ impl Board {
             .get(&pin_num)
             .ok_or(CircuitDojoError::InvalidPin(pin_num))?;
         let pin = self.pins.get_mut(*pindex).unwrap(); // unwrap is fine here: the index must be valid to have been returned from the mapping
-        pin.mode = PinMode::Output;
+        pin.mode = PinMode::Input;
         self.commands
             .try_push(Command::SetPinModeInput(pin_num))
             .unwrap();
