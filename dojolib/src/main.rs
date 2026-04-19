@@ -26,6 +26,7 @@ fn connect(port: &str) {
     board.subscribe(1000).unwrap();
     println!("Connected to {}", board.get_name());
     loop {
+        board.get_pin(11).unwrap().set_input().unwrap();
         let line = readline();
         board.update().unwrap();
         let mut args = line.split(" ");
@@ -34,14 +35,14 @@ fn connect(port: &str) {
                 for pin in board.pins() {
                     println!(
                         "* [{}] {} {}: {}",
-                        pin.hw_id,
-                        match pin.tp {
+                        pin.hw_id(),
+                        match pin.tp() {
                             PinType::DigitalPullup => "DP WP",
                             PinType::Digital => "DP",
                             PinType::Analog => "AP",
                         },
-                        pin.ident,
-                        match pin.status {
+                        pin.ident(),
+                        match pin.status() {
                             PinStatus::DigitalInputting(level) => {
                                 format!("Inputting {}", if level { "HIGH" } else { "LOW" })
                             }
@@ -49,7 +50,7 @@ fn connect(port: &str) {
                                 format!("Outputting {}", if level { "HIGH" } else { "LOW" })
                             }
                             PinStatus::AnalogInputting(level) => {
-                                format!("Inputting {}V", (level as f32) / 1024.0 * 5.0)
+                                format!("Inputting {}V", (level as f32) * ADC_CONSTANT)
                             }
                             _ => String::new(),
                         }
@@ -58,11 +59,11 @@ fn connect(port: &str) {
             }
             "setoutput" => {
                 let pin_num = args.next().unwrap().parse::<u8>().unwrap();
-                board.set_output(pin_num).unwrap();
+                board.get_pin(pin_num).unwrap().set_input().unwrap();
             }
             "setinput" => {
                 let pin_num = args.next().unwrap().parse::<u8>().unwrap();
-                board.set_input(pin_num).unwrap();
+                board.get_pin(pin_num).unwrap().set_input().unwrap();
             }
             "digitalwrite" => {
                 let pin_num = args.next().unwrap().parse::<u8>().unwrap();
@@ -71,7 +72,11 @@ fn connect(port: &str) {
                     "LOW" => false,
                     _ => panic!(),
                 };
-                board.digital_write(pin_num, value).unwrap();
+                board
+                    .get_pin(pin_num)
+                    .unwrap()
+                    .digital_write(value)
+                    .unwrap();
             }
             _ => {
                 println!("bad command");

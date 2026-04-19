@@ -10,11 +10,8 @@ Redistribution and use in source and binary forms, with or without modification,
 THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS “AS IS” AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 */
-use dojolib::{
-    Board,
-    board::{PinMode, PinStatus},
-};
-use eframe::egui::{self, Align2, Color32, FontId, Rect, Rgba, Sense, Stroke, StrokeKind};
+use dojolib::{ADC_CONSTANT, Board, board::PinStatus};
+use eframe::egui::{self, Color32, Stroke};
 
 trait Screen {
     fn draw(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) -> Option<Box<dyn Screen>>; // draw function that meshes nicely with egui
@@ -36,7 +33,7 @@ impl PortPickerScreen {
 }
 
 impl Screen for PortPickerScreen {
-    fn draw(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) -> Option<Box<dyn Screen>> {
+    fn draw(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) -> Option<Box<dyn Screen>> {
         let mut rtval: Option<Box<dyn Screen>> = None;
         egui::CentralPanel::default().show(ctx, |ui| {
             egui::ComboBox::from_label("Select A Port")
@@ -56,97 +53,189 @@ impl Screen for PortPickerScreen {
 
 struct MainScreen {
     board: Board,
+    selected_pin: u8,
 }
 
 impl MainScreen {
     fn new(port: impl AsRef<str>) -> Self {
         let mut board = Board::new(port, 115200).unwrap();
         board.subscribe(16).unwrap(); // 16ms sample rate = 60hz
-        Self { board }
+        Self {
+            board,
+            selected_pin: 0,
+        }
+    }
+
+    fn digital_ins(&mut self, ui: &mut egui::Ui) {
+        for pin in self.board.pins() {
+            if let PinStatus::DigitalInputting(value) = pin.status() {
+                egui::Frame::new()
+                    .inner_margin(5.0)
+                    .stroke(Stroke::new(1.0, Color32::BLACK))
+                    .outer_margin(3.0)
+                    .fill(if value {
+                        Color32::DARK_GREEN
+                    } else {
+                        Color32::DARK_RED
+                    })
+                    .show(ui, |ui| {
+                        ui.label(format!(
+                            "[{}] {}: {}",
+                            pin.hw_id(),
+                            pin.ident(),
+                            if value { "HIGH" } else { "LOW" }
+                        ))
+                    });
+            }
+        }
+    }
+
+    fn digital_outs(&mut self, ui: &mut egui::Ui) {
+        for mut pin in self.board.pins() {
+            if let PinStatus::DigitalOutputting(value) = pin.status() {
+                if egui::Frame::new()
+                    .inner_margin(5.0)
+                    .stroke(Stroke::new(1.0, Color32::BLACK))
+                    .outer_margin(3.0)
+                    .fill(if value {
+                        Color32::DARK_GREEN
+                    } else {
+                        Color32::DARK_RED
+                    })
+                    .show(ui, |ui| {
+                        if ui
+                            .label(format!(
+                                "[{}] {}: {}",
+                                pin.hw_id(),
+                                pin.ident(),
+                                if value { "HIGH" } else { "LOW" }
+                            ))
+                            .clicked()
+                        {
+                            pin.digital_write(!value).unwrap();
+                        }
+                    })
+                    .response
+                    .clicked()
+                {
+                    pin.digital_write(!value).unwrap();
+                }
+            }
+        }
+    }
+
+    fn analog_ins(&mut self, ui: &mut egui::Ui) {
+        for pin in self.board.pins() {
+            if let PinStatus::AnalogInputting(value) = pin.status() {
+                egui::Frame::new()
+                    .inner_margin(5.0)
+                    .stroke(Stroke::new(1.0, Color32::BLACK))
+                    .outer_margin(3.0)
+                    .fill(Color32::DARK_BLUE)
+                    .show(ui, |ui| {
+                        ui.label(format!(
+                            "[{}] {}: {:1.2}V",
+                            pin.hw_id(),
+                            pin.ident(),
+                            value as f32 * ADC_CONSTANT
+                        ))
+                    });
+            }
+        }
+    }
+
+    fn analog_outs(&mut self, ui: &mut egui::Ui) {
+        for mut pin in self.board.pins() {
+            if let PinStatus::AnalogOutputting(value) = pin.status() {
+                egui::Frame::new()
+                    .inner_margin(5.0)
+                    .stroke(Stroke::new(1.0, Color32::BLACK))
+                    .outer_margin(3.0)
+                    .fill(Color32::from_rgb(150, 50, 80))
+                    .show(ui, |ui| {
+                        let mut slider_value = value as f32 * 100.0 / 255.0;
+                        let old_slider = slider_value;
+                        ui.label(format!(
+                            "[{}] {}: {:2.2}%",
+                            pin.hw_id(),
+                            pin.ident(),
+                            slider_value
+                        ));
+                        ui.add(egui::Slider::new(&mut slider_value, 0.0..=100.0));
+                        if slider_value != old_slider {
+                            pin.analog_write((slider_value * 255.0 / 100.0) as u8)
+                                .unwrap();
+                        }
+                    });
+            }
+        }
     }
 }
 
 impl Screen for MainScreen {
-    fn draw(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) -> Option<Box<dyn Screen>> {
+    fn draw(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) -> Option<Box<dyn Screen>> {
         self.board.update().unwrap();
         egui::CentralPanel::default().show(ctx, |ui| {
+            ui.label("Pin Select");
+            ui.horizontal_top(|ui| {
+                let mut selected_pin = self.board.get_pin(self.selected_pin).unwrap();
+                {
+                    egui::ComboBox::from_id_salt("PinSelector")
+                        .selected_text(selected_pin.ident())
+                        .show_ui(ui, |menu| {
+                            for (i, pin) in self.board.pins().enumerate() {
+                                menu.selectable_value(&mut self.selected_pin, i as u8, pin.ident());
+                            }
+                        });
+                }
+                if ui.button("Set Input").clicked() {
+                    selected_pin.set_input().unwrap();
+                }
+                if ui.button("Set Output").clicked() {
+                    selected_pin.set_output().unwrap();
+                }
+                if ui.button("Set PWM Out").clicked() {
+                    selected_pin.analog_write(0).unwrap();
+                }
+                if ui.button("Disable").clicked() {
+                    selected_pin.disable().unwrap();
+                }
+                ui.label(match selected_pin.status() {
+                    PinStatus::AnalogInputting(val) => {
+                        format!("Analog Input {:1.2}V", val as f32 * ADC_CONSTANT)
+                    }
+                    PinStatus::AnalogOutputting(val) => {
+                        format!("PWM Output {:2.2}%", val as f32 / 255.0 * 100.0)
+                    }
+                    PinStatus::DigitalInputting(val) => {
+                        format!("Digital Input {}", if val { "HIGH" } else { "LOW" })
+                    }
+                    PinStatus::DigitalOutputting(out) => {
+                        format!("Digital Output {}", if out { "HIGH" } else { "LOW" })
+                    }
+                    PinStatus::DigitalPullupInputting(_) => unreachable!(),
+                    PinStatus::NoStatus => format!("Unused"),
+                });
+            });
+            ui.separator();
+            ui.label("Digital Inputs");
             ui.horizontal_wrapped(|ui| {
-                let mut mode_op = None;
-                let mut out_op = None;
-                for pin in self.board.pins() {
-                    let (res, paint) = ui.allocate_painter(egui::Vec2::splat(64.0), Sense::click());
-                    paint.rect_filled(
-                        res.rect,
-                        0.0,
-                        match pin.mode {
-                            PinMode::Unset => Rgba::from_rgb(0.7, 0.7, 0.7),
-                            _ => {
-                                if match pin.status {
-                                    PinStatus::DigitalOutputting(val) => val,
-                                    PinStatus::DigitalInputting(val) => val,
-                                    _ => false,
-                                } {
-                                    Rgba::from_rgb(0.0, 1.0, 0.0)
-                                } else {
-                                    Rgba::from_rgb(1.0, 0.0, 0.0)
-                                }
-                            }
-                        },
-                    );
-                    paint.text(
-                        res.rect.center_top(),
-                        Align2::CENTER_TOP,
-                        &pin.ident,
-                        FontId::monospace(8.0),
-                        Color32::BLACK,
-                    );
-                    let mode_rect = res.rect.split_top_bottom_at_fraction(0.7).1.shrink(1.0);
-                    paint.rect_stroke(
-                        mode_rect,
-                        0.0,
-                        Stroke::new(2.0, Rgba::BLACK),
-                        StrokeKind::Inside,
-                    );
-                    paint.text(
-                        mode_rect.center(),
-                        Align2::CENTER_CENTER,
-                        match pin.mode {
-                            PinMode::Input => "INPUT",
-                            PinMode::Output => "OUTPUT",
-                            PinMode::Unset => "OFF",
-                        },
-                        FontId::monospace(10.0),
-                        Color32::BLACK,
-                    );
-                    if res.clicked() {
-                        if let Some(pointer) = res.interact_pointer_pos() {
-                            if mode_rect.contains(pointer) {
-                                mode_op = Some((pin.mode, pin.hw_id));
-                            } else {
-                                if let PinMode::Output = pin.mode {
-                                    if let PinStatus::DigitalOutputting(val) = pin.status {
-                                        out_op = Some((!val, pin.hw_id));
-                                    } else {
-                                        out_op = Some((true, pin.hw_id));
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                if let Some((mode, id)) = mode_op {
-                    match mode {
-                        PinMode::Input => {
-                            self.board.set_output(id).unwrap();
-                        }
-                        PinMode::Output | PinMode::Unset => {
-                            self.board.set_input(id).unwrap();
-                        }
-                    }
-                }
-                if let Some((status, id)) = out_op {
-                    self.board.digital_write(id, status).unwrap();
-                }
+                self.digital_ins(ui);
+            });
+            ui.separator();
+            ui.label("Digital Outputs");
+            ui.horizontal_wrapped(|ui| {
+                self.digital_outs(ui);
+            });
+            ui.separator();
+            ui.label("Analog Inputs");
+            ui.horizontal_wrapped(|ui| {
+                self.analog_ins(ui);
+            });
+            ui.separator();
+            ui.label("PWM Outputs");
+            ui.horizontal_wrapped(|ui| {
+                self.analog_outs(ui);
             });
         });
         ctx.request_repaint();
@@ -159,7 +248,7 @@ struct CircuitDojoDesktop {
 }
 
 impl CircuitDojoDesktop {
-    fn new(cc: &eframe::CreationContext<'_>) -> Self {
+    fn new(_cc: &eframe::CreationContext<'_>) -> Self {
         Self {
             screen: Box::new(PortPickerScreen::new()),
         }

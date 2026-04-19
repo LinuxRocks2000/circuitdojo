@@ -17,6 +17,7 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS “AS IS” 
     validates commands, and provides a nice pin interface.
 */
 pub const DOJOLIB_VERSION: u8 = 1;
+pub const ADC_CONSTANT: f32 = 5.0 / 1023.0;
 
 pub mod connection;
 mod opcodes;

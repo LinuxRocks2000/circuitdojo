@@ -29,7 +29,6 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS “AS IS” 
 
 use crate::CircuitDojoError;
 use crate::Result;
-use crate::board::PinStatus;
 use crate::opcodes::{miso, mosi};
 use std::borrow::Cow;
 use std::collections::VecDeque;
@@ -45,6 +44,8 @@ pub enum Command {
     RunOneSample,
     SetDigitalPinValue(u8, bool),
     Subscribe(u16),
+    SetAnalogPinValue(u8, u8), // id, duty
+    Disable(u8),               // id
 }
 
 #[derive(Debug)]
@@ -71,7 +72,7 @@ impl Connection {
         Ok(Self {
             port: serialport::new(port, baud)
                 .dtr_on_open(false)
-                .timeout(std::time::Duration::from_secs(1)) // after 1s of not receiving data when data is expected, fail!
+                .timeout(std::time::Duration::from_millis(100)) // after 100ms of not receiving data when data is expected, fail!
                 .open()?,
             waiting_commands: VecDeque::new(),
             events: VecDeque::new(),
@@ -127,6 +128,15 @@ impl Connection {
             Command::Subscribe(wavelength) => {
                 self.write_byte(mosi::SUBSCRIBE)?;
                 self.port.write(&wavelength.to_le_bytes())?;
+            }
+            Command::SetAnalogPinValue(pin, value) => {
+                self.write_byte(mosi::ANALOG_WRITE)?;
+                self.write_byte(pin)?;
+                self.write_byte(value)?;
+            }
+            Command::Disable(pin) => {
+                self.write_byte(mosi::DISABLE_PIN)?;
+                self.write_byte(pin)?;
             }
         }
         self.waiting_commands.push_back(command);
@@ -234,7 +244,7 @@ impl Connection {
     }
 
     pub fn begin(&mut self) -> Result<()> {
-        let mut retry_limit = 5;
+        let mut retry_limit = 50;
         while retry_limit > 0 {
             self.write_command(Command::PleaseEstablish)?;
             if let Ok(()) = self.wait_incoming() {
@@ -247,7 +257,7 @@ impl Connection {
         Err(CircuitDojoError::TimedOut)
     }
 
-    pub fn events(&mut self) -> Drain<Event> {
+    pub fn events(&mut self) -> Drain<'_, Event> {
         self.events.drain(..)
     }
 }

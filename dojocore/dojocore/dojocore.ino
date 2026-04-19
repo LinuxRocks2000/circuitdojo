@@ -12,7 +12,7 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS “AS IS” 
 */
 // the core of CircuitDojo
 
-#define PIN_COUNT 12
+#define PIN_COUNT 17
 
 struct pindef {
   int physical_pin;
@@ -33,7 +33,12 @@ pindef pins[PIN_COUNT] = {
   { 11, false, true, "Digital 11" },
   { 12, false, true, "Digital 12" },
   { 13, false, true, "Digital 13" },
-  { A0, true, false, "Analog 0" }
+  { A0, true, false, "Analog 0" },
+  { A1, true, false, "Analog 1" },
+  { A2, true, false, "Analog 2" },
+  { A3, true, false, "Analog 3" },
+  { A4, true, false, "Analog 4" },
+  { A5, true, false, "Analog 5" },
 };
 
 #define DIG_NONE 1024
@@ -41,6 +46,11 @@ pindef pins[PIN_COUNT] = {
 #define DIG_HIGH 1026
 
 uint16_t states[PIN_COUNT] = { // 0-1023 = analog, 1024=none, 1025=digital low, 1026=digital high
+  DIG_NONE,
+  DIG_NONE,
+  DIG_NONE,
+  DIG_NONE,
+  DIG_NONE,
   DIG_NONE,
   DIG_NONE,
   DIG_NONE,
@@ -68,6 +78,11 @@ char modes[PIN_COUNT] = {
   0,
   0,
   0,
+  0,
+  0,
+  0,
+  0,
+  0
 }; // 0=none, 1=input, 2=output
 
 const int pinCount = sizeof(pins) / sizeof(pindef);
@@ -165,11 +180,35 @@ void loop() {
         modes[pindex] = 2;
       }
     }
+    else if (byte == 0x83) {
+      while (Serial.available() < 1) {} // block until bytes
+      int pindex = Serial.read();
+      if (pindex == -1) {
+        Serial.write(0xFE);
+      }
+      modes[pindex] = 0;
+      digitalWrite(pins[pindex].physical_pin, LOW);
+      pinMode(pins[pindex].physical_pin, INPUT);
+      Serial.write(0xFF);
+    }
     else if (byte == 0x84) { // subscribe to updates
       while (Serial.available() < 2) {} // block until bytes
       subsc_wavelength = Serial.read();
       subsc_wavelength |= Serial.read() << 8;
       Serial.write(0xFF);
+    }
+    else if (byte == 0x85) { // analog output mode (PWM)
+      while (Serial.available() < 2) {} // block until bytes
+      int pindex = Serial.read();
+      int duty = Serial.read();
+      if (duty == -1) {
+        Serial.write(0xFE);
+      }
+      else {
+        Serial.write(0xFF);
+        analogWrite(pins[pindex].physical_pin, duty);
+        modes[pindex] = 2;
+      }
     }
     else if (byte == 0x86) { // write all pin values, then ACK
       for (int i = 0; i < pinCount; i ++) {

@@ -15,8 +15,10 @@ pub(crate) mod mosi {
     pub(crate) const REQUEST_BOARD_PARAMETERS: u8 = 0x80;
     pub(crate) const SET_PIN_MODE_INPUT: u8 = 0x81;
     pub(crate) const SET_PIN_MODE_OUTPUT: u8 = 0x82;
-    pub(crate) const RUN_ONE_SAMPLE: u8 = 0x86;
+    pub(crate) const DISABLE_PIN: u8 = 0x83;
     pub(crate) const SUBSCRIBE: u8 = 0x84;
+    pub(crate) const ANALOG_WRITE: u8 = 0x85;
+    pub(crate) const RUN_ONE_SAMPLE: u8 = 0x86;
 }
 
 pub(crate) mod miso {
