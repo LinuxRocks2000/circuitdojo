@@ -177,65 +177,72 @@ impl Screen for MainScreen {
         self.board.update().unwrap();
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.label("Pin Select");
-            ui.horizontal_top(|ui| {
-                let mut selected_pin = self.board.get_pin(self.selected_pin).unwrap();
-                {
-                    egui::ComboBox::from_id_salt("PinSelector")
-                        .selected_text(selected_pin.ident())
-                        .show_ui(ui, |menu| {
-                            for (i, pin) in self.board.pins().enumerate() {
-                                menu.selectable_value(&mut self.selected_pin, i as u8, pin.ident());
-                            }
-                        });
-                }
-                if ui.button("Set Input").clicked() {
-                    selected_pin.set_input().unwrap();
-                }
-                if ui.button("Set Output").clicked() {
-                    selected_pin.set_output().unwrap();
-                }
-                if ui.button("Set PWM Out").clicked() {
-                    selected_pin.analog_write(0).unwrap();
-                }
-                if ui.button("Disable").clicked() {
-                    selected_pin.disable().unwrap();
-                }
-                ui.label(match selected_pin.status() {
-                    PinStatus::AnalogInputting(val) => {
-                        format!("Analog Input {:1.2}V", val as f32 * ADC_CONSTANT)
+            ui.columns(3, |cols| {
+                let [pin_select, digital, analog] = cols else {
+                    unreachable!()
+                };
+                pin_select.vertical(|ui| {
+                    let mut selected_pin = self.board.get_pin(self.selected_pin).unwrap();
+                    {
+                        egui::ComboBox::from_id_salt("PinSelector")
+                            .selected_text(selected_pin.ident())
+                            .show_ui(ui, |menu| {
+                                for (i, pin) in self.board.pins().enumerate() {
+                                    menu.selectable_value(
+                                        &mut self.selected_pin,
+                                        i as u8,
+                                        pin.ident(),
+                                    );
+                                }
+                            });
                     }
-                    PinStatus::AnalogOutputting(val) => {
-                        format!("PWM Output {:2.2}%", val as f32 / 255.0 * 100.0)
+                    if ui.button("Set Input").clicked() {
+                        selected_pin.set_input().unwrap();
                     }
-                    PinStatus::DigitalInputting(val) => {
-                        format!("Digital Input {}", if val { "HIGH" } else { "LOW" })
+                    if ui.button("Set Output").clicked() {
+                        selected_pin.set_output().unwrap();
                     }
-                    PinStatus::DigitalOutputting(out) => {
-                        format!("Digital Output {}", if out { "HIGH" } else { "LOW" })
+                    if ui.button("Set PWM Out").clicked() {
+                        selected_pin.analog_write(0).unwrap();
                     }
-                    PinStatus::DigitalPullupInputting(_) => unreachable!(),
-                    PinStatus::NoStatus => format!("Unused"),
+                    if ui.button("Disable").clicked() {
+                        selected_pin.disable().unwrap();
+                    }
+                    ui.label(match selected_pin.status() {
+                        PinStatus::AnalogInputting(val) => {
+                            format!("Analog Input {:1.2}V", val as f32 * ADC_CONSTANT)
+                        }
+                        PinStatus::AnalogOutputting(val) => {
+                            format!("PWM Output {:2.2}%", val as f32 / 255.0 * 100.0)
+                        }
+                        PinStatus::DigitalInputting(val) => {
+                            format!("Digital Input {}", if val { "HIGH" } else { "LOW" })
+                        }
+                        PinStatus::DigitalOutputting(out) => {
+                            format!("Digital Output {}", if out { "HIGH" } else { "LOW" })
+                        }
+                        PinStatus::DigitalPullupInputting(_) => unreachable!(),
+                        PinStatus::NoStatus => format!("Unused"),
+                    });
                 });
-            });
-            ui.separator();
-            ui.label("Digital Inputs");
-            ui.horizontal_wrapped(|ui| {
-                self.digital_ins(ui);
-            });
-            ui.separator();
-            ui.label("Digital Outputs");
-            ui.horizontal_wrapped(|ui| {
-                self.digital_outs(ui);
-            });
-            ui.separator();
-            ui.label("Analog Inputs");
-            ui.horizontal_wrapped(|ui| {
-                self.analog_ins(ui);
-            });
-            ui.separator();
-            ui.label("PWM Outputs");
-            ui.horizontal_wrapped(|ui| {
-                self.analog_outs(ui);
+                egui::ScrollArea::vertical()
+                    .id_salt("Digital")
+                    .show(digital, |ui| {
+                        ui.label("Digital Inputs");
+                        self.digital_ins(ui);
+                        ui.separator();
+                        ui.label("Digital Outputs");
+                        self.digital_outs(ui);
+                    });
+                egui::ScrollArea::vertical()
+                    .id_salt("Analog")
+                    .show(analog, |ui| {
+                        ui.label("Analog Inputs");
+                        self.analog_ins(ui);
+                        ui.separator();
+                        ui.label("PWM Outputs");
+                        self.analog_outs(ui);
+                    });
             });
         });
         ctx.request_repaint();
