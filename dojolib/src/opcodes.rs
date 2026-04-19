@@ -25,4 +25,5 @@ pub(crate) mod miso {
     pub(crate) const SAMPLING_BOUNDS: u8 = 0x80;
     pub(crate) const PIN_DESCRIPTION: u8 = 0x81;
     pub(crate) const BOARD_DESCRIPTION: u8 = 0x82;
+    pub(crate) const ANALOG_SAMPLE: u8 = 0x83; // 0x83 <pin number> <sample value low byte> <sample value high byte>
 }

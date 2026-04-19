@@ -187,6 +187,15 @@ impl Connection {
                 let board_name = self.block_read_nullt_string()?;
                 self.events.push_back(Event::BoardDescription(board_name));
             }
+            miso::ANALOG_SAMPLE => {
+                let pin_id = self.block_read_byte()?;
+                let sample_low = self.block_read_byte()? as u16;
+                let sample_high = self.block_read_byte()? as u16;
+                self.events.push_back(Event::AnalogPinStateChange(
+                    pin_id,
+                    sample_low + (sample_high << 8),
+                ));
+            }
             _ => {
                 return Err(CircuitDojoError::SynchronizationError(format!(
                     "Expected control byte, got {}",

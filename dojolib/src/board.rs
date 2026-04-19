@@ -154,6 +154,14 @@ impl Board {
                                 ))
                                 .unwrap();
                         }
+                        Event::AnalogPinStateChange(pin, value) => {
+                            events
+                                .try_push(BoardEvent::PinState(
+                                    pin,
+                                    PinStatus::AnalogInputting(value),
+                                ))
+                                .unwrap();
+                        }
                         _ => {}
                     }
                 }

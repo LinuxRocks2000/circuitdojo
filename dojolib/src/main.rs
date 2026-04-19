@@ -23,7 +23,7 @@ fn readline() -> String {
 fn connect(port: &str) {
     println!("Connecting to port {} @115200 baud", port);
     let mut board = Board::new(port, 115200).unwrap();
-    board.subscribe(100).unwrap();
+    board.subscribe(1000).unwrap();
     println!("Connected to {}", board.get_name());
     loop {
         let line = readline();
@@ -47,6 +47,9 @@ fn connect(port: &str) {
                             }
                             PinStatus::DigitalOutputting(level) => {
                                 format!("Outputting {}", if level { "HIGH" } else { "LOW" })
+                            }
+                            PinStatus::AnalogInputting(level) => {
+                                format!("Inputting {}V", (level as f32) / 1024.0 * 5.0)
                             }
                             _ => String::new(),
                         }

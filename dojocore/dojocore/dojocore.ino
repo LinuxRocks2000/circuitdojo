@@ -12,6 +12,8 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS “AS IS” 
 */
 // the core of CircuitDojo
 
+#define PIN_COUNT 12
+
 struct pindef {
   int physical_pin;
   bool is_analog;
@@ -19,7 +21,7 @@ struct pindef {
   const char* identifier;
 };
 
-pindef pins[] = {
+pindef pins[PIN_COUNT] = {
   { 3, false, true, "Digital 3" },
   { 4, false, true, "Digital 4" },
   { 5, false, true, "Digital 5" },
@@ -31,13 +33,15 @@ pindef pins[] = {
   { 11, false, true, "Digital 11" },
   { 12, false, true, "Digital 12" },
   { 13, false, true, "Digital 13" },
+  { A0, true, false, "Analog 0" }
 };
 
 #define DIG_NONE 1024
 #define DIG_LOW 1025
 #define DIG_HIGH 1026
 
-uint16_t states[] = { // 0-1023 = analog, 1024=none, 1025=digital low, 1026=digital high
+uint16_t states[PIN_COUNT] = { // 0-1023 = analog, 1024=none, 1025=digital low, 1026=digital high
+  DIG_NONE,
   DIG_NONE,
   DIG_NONE,
   DIG_NONE,
@@ -51,7 +55,8 @@ uint16_t states[] = { // 0-1023 = analog, 1024=none, 1025=digital low, 1026=digi
   DIG_NONE,
 };
 
-char modes[] = {
+char modes[PIN_COUNT] = {
+  0,
   0,
   0,
   0,
@@ -80,7 +85,12 @@ void doPinUpdates() {
       continue;
     }
     if (pins[i].is_analog) {
-  
+      Serial.write(0x83);
+      Serial.write(i);
+      int samp = analogRead(pins[i].physical_pin);
+      // 12 bit adcs so 16 transmitted bits:
+      Serial.write(samp & 0xFF);
+      Serial.write((samp >> 8) & 0xFF);
     }
     else {
       int val = digitalRead(pins[i].physical_pin);
@@ -116,12 +126,7 @@ void loop() {
     byte = Serial.read();
     if ((~byte) & 0x80) { // if the high bit is unset
       int pindex = byte & 0b00111111;
-      if (pins[pindex].is_analog) {
-        // TODO
-      }
-      else {
-        digitalWrite(pins[pindex].physical_pin, (byte & 0x40) ? HIGH : LOW);
-      }
+      digitalWrite(pins[pindex].physical_pin, (byte & 0x40) ? HIGH : LOW);
     }
     else if (byte == 0x80) {
       uint8_t capabilities[] = { 0xFF, 0x80, 0x10, 0x00 };
@@ -170,7 +175,12 @@ void loop() {
       for (int i = 0; i < pinCount; i ++) {
         if (modes[i] == 1) {
           if (pins[i].is_analog) {
-            // TODO
+            Serial.write(0x83);
+            Serial.write(i);
+            int samp = analogRead(pins[i].physical_pin);
+            // 12 bit adcs so 16 transmitted bits:
+            Serial.write(samp & 0xFF);
+            Serial.write((samp >> 8) & 0xFF);
           }
           else {
             Serial.write(i | (digitalRead(pins[i].physical_pin) ? 0x40 : 0));
